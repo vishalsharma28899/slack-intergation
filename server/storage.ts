@@ -128,6 +128,7 @@ export interface IStorage {
   getUserConversations(userId: string): Promise<any[]>;
   createConversation(conversation: any): Promise<any>;
   updateConversation(id: string, updates: Partial<any>): Promise<any>;
+  getActiveConversationByUser(userId: string): Promise<any | null>; // ✅ Added
 
   // Messages
   getConversationMessages(conversationId: string): Promise<any[]>;
@@ -181,6 +182,10 @@ export class MongoDBStorage implements IStorage {
   async getUserConversations(userId: string): Promise<any[]> {
     return await Conversation.find({ userId }).sort({ updatedAt: -1 });
   }
+  async  getActiveConversationByUser(userId: string) {
+  return Conversation.findOne({ userId, status: "active" }).lean();
+}
+
 
   async createConversation(conversationData: any): Promise<any> {
     if (!conversationData.userId) {

@@ -14,39 +14,80 @@ import { storage } from "./storage";
 dotenv.config();
 
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+  async function createSlackChannelForUser(userId: string, userEmail: string) {
+  const channelName = `user-${userEmail.replace(/[^a-zA-Z0-9]/g, "-")}`;
 
-// Create a new Slack channel for each user
-export async function createSlackChannelForUser(userId: string, email: string) {
-  const channelName = `chat-${userId.substring(0, 8)}`;
+  try {
+    // 1️⃣ Create public channel
+    const result = await slack.conversations.create({
+      name: channelName,
+      is_private: false, // make it visible to all
+    });
 
-  // 1. Create channel
-  const channel = await slack.conversations.create({
-    name: channelName,
-    is_private: false,
-  });
+    const channelId = result.channel?.id;
+    if (!channelId) throw new Error("Failed to create channel");
 
-  // 2. Invite support/admins
-  if (!channel.channel?.id) {
-    throw new Error("Failed to create Slack channel – missing channel ID");
+    // 2️⃣ Invite support/admin users
+    await slack.conversations.invite({
+      channel: channelId,
+      users: process.env.SLACK_SUPPORT_USER_IDS!, // comma-separated user IDs
+    });
+
+    // 3️⃣ Post welcome message
+    const msg = await slack.chat.postMessage({
+      channel: channelId,
+      text: `New conversation started by *${userEmail}*`,
+    });
+
+    return { channelId, ts: msg.ts };
+  } catch (err: any) {
+    if (err.data?.error === "name_taken") {
+      // Reuse existing channel
+      const list = await slack.conversations.list({ types: "public_channel,private_channel" });
+      const channel = list.channels?.find(c => c.name === channelName);
+      if (!channel) throw new Error("Slack channel exists but not found");
+
+      return { channelId: channel.id, ts: null };
+    }
+    throw err;
   }
-
-  await slack.conversations.invite({
-    channel: channel.channel.id,
-    users: process.env.SLACK_SUPPORT_USER_IDS!,
-  });
-
-
-  // 3. Post welcome message
-  const msg = await slack.chat.postMessage({
-    channel: channel.channel!.id,
-    text: `New conversation started by *${email}*`,
-  });
-
-  return {
-    channelId: channel.channel!.id,
-    ts: msg.ts,
-  };
 }
+
+
+
+// export async function createSlackChannelForUser(userId: string, email: string) {
+//   const channelName = `chat-${userId.substring(0, 8)}`;
+
+//   // 1. Create channel
+//   const channel = await slack.conversations.create({
+//     name: channelName,
+//     is_private: false,
+//   });
+
+//   // 2. Invite support/admins
+//   if (!channel.channel?.id) {
+//     throw new Error("Failed to create Slack channel – missing channel ID");
+//   }
+
+//   await slack.conversations.invite({
+//     channel: channel.channel.id,
+//     users: process.env.SLACK_SUPPORT_USER_IDS!,
+//   });
+
+
+//   // 3. Post welcome message
+//   const msg = await slack.chat.postMessage({
+//     channel: channel.channel!.id,
+//     text: `New conversation started by *${email}*`,
+//   });
+
+//   return {
+//     channelId: channel.channel!.id,
+//     ts: msg.ts,
+//   };
+// }
+
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
@@ -176,33 +217,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) return;
       socket.join(userId);
     });
+socket.on("start_conversation", async ({ userId, userEmail }) => {
+  try {
+    // Check if an active conversation exists for this user
+    let conversation = await storage.getActiveConversationByUser(userId);
 
-    socket.on("start_conversation", async ({ userId, userEmail }) => {
-      try {
-        const conversation = await storage.createConversation({ userId, status: "active" });
+    if (!conversation) {
+      // Create new conversation if none exists
+      conversation = await storage.createConversation({ userId, status: "active" });
 
-        const slackInfo = await createSlackChannelForUser(userId, userEmail);
-        await storage.updateConversation(conversation.id, {
-          slackChannelId: slackInfo.channelId,
-          slackThreadTs: slackInfo.ts,
-        });
+      // Create (or reuse) Slack channel
+      const slackInfo = await createSlackChannelForUser(userId, userEmail);
 
-        socket.join(conversation.id);
-
-        const welcomeMessage = await storage.createMessage({
-          conversationId: conversation.id,
-          senderId: null,
-          senderType: "support",
-          senderName: "Support Team",
-          content: "Hello! Welcome to our support chat.",
-        });
-
-        socket.emit("conversation_started", { conversation, message: welcomeMessage });
-      } catch (err) {
-        console.error("Error starting conversation:", err);
-        socket.emit("error", { message: "Failed to start conversation" });
+      const convId = conversation?._id?.toString();
+      if (!convId) {
+        console.error("❌ No conversation ID found after creation");
+        socket.emit("error", { message: "Conversation ID missing" });
+        return;
       }
+
+      await storage.updateConversation(convId, {
+        slackChannelId: slackInfo.channelId,
+        slackThreadTs: slackInfo.ts,
+      });
+    }
+
+    // ✅ Always normalize convId here (works for both new + existing conversation)
+    const convId = (conversation as any)._id.toString() || conversation?._id?.toString();
+    if (!convId) {
+      console.error("❌ No conversation ID found");
+      socket.emit("error", { message: "Conversation ID missing" });
+      return;
+    }
+
+    // Join existing conversation room
+    socket.join(convId);
+
+    // Fetch old messages
+    const messages = await storage.getConversationMessages(convId);
+
+    // Emit normalized conversation
+    socket.emit("conversation_started", {
+      conversation: { ...conversation, id: convId },
+      messages,
     });
+  } catch (err) {
+    console.error("Error starting conversation:", err);
+    socket.emit("error", { message: "Failed to start conversation" });
+  }
+});
+
+
 
     socket.on("send_message", async (data: {
       conversationId: string;
