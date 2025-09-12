@@ -1,5 +1,6 @@
 import OpenAI from "openai";
-
+import dotenv from "dotenv";
+dotenv.config();
 let openai: OpenAI | null = null;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY ;
 if (!OPENAI_API_KEY) {

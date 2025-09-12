@@ -1,5 +1,7 @@
 import { WebClient } from "@slack/web-api";
 import { storage } from "../storage";
+import dotenv from "dotenv";
+dotenv.config();
  const  SLACK_API_TOKEN= process.env.SLACK_API_TOKEN ;
 if (!SLACK_API_TOKEN) {
   throw new Error("SLACK_API_TOKEN environment variable must be set");
