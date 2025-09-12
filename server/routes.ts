@@ -14,78 +14,51 @@ import { storage } from "./storage";
 dotenv.config();
 
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
-  async function createSlackChannelForUser(userId: string, userEmail: string) {
-  const channelName = `user-${userEmail.replace(/[^a-zA-Z0-9]/g, "-")}`;
+ 
+
+export async function createSlackChannelForUser(userId: string, email: string) {
+  const channelName = `chat-${userId.substring(0, 8)}`;
 
   try {
-    // 1️⃣ Create public channel
-    const result = await slack.conversations.create({
-      name: channelName,
-      is_private: false, // make it visible to all
-    });
+    // Try creating a new channel
+    const channel = await slack.conversations.create({ name: channelName, is_private: false });
 
-    const channelId = result.channel?.id;
-    if (!channelId) throw new Error("Failed to create channel");
-
-    // 2️⃣ Invite support/admin users
+    // Invite support/admin users
+    if (!channel.channel?.id) throw new Error("Failed to create Slack channel");
     await slack.conversations.invite({
-      channel: channelId,
-      users: process.env.SLACK_SUPPORT_USER_IDS!, // comma-separated user IDs
+      channel: channel.channel.id,
+      users: process.env.SLACK_SUPPORT_USER_IDS!,
     });
 
-    // 3️⃣ Post welcome message
+    // Post welcome message
     const msg = await slack.chat.postMessage({
-      channel: channelId,
-      text: `New conversation started by *${userEmail}*`,
+      channel: channel.channel.id,
+      text: `New conversation started by *${email}*`,
     });
 
-    return { channelId, ts: msg.ts };
+    return { channelId: channel.channel.id, ts: msg.ts };
   } catch (err: any) {
+    // If channel already exists
     if (err.data?.error === "name_taken") {
-      // Reuse existing channel
       const list = await slack.conversations.list({ types: "public_channel,private_channel" });
-      const channel = list.channels?.find(c => c.name === channelName);
-      if (!channel) throw new Error("Slack channel exists but not found");
+      const existingChannel = list.channels?.find((c) => c.name === channelName);
+      if (!existingChannel) throw new Error("Slack channel exists but not found");
 
-      return { channelId: channel.id, ts: null };
+      // Get latest message timestamp to use as thread_ts
+      const history = await slack.conversations.history({
+        channel: existingChannel.id,
+        limit: 1,
+      });
+      const latestTs = history.messages?.[0]?.ts || null;
+
+      return { channelId: existingChannel.id, ts: latestTs };
     }
     throw err;
   }
 }
 
 
-
-// export async function createSlackChannelForUser(userId: string, email: string) {
-//   const channelName = `chat-${userId.substring(0, 8)}`;
-
-//   // 1. Create channel
-//   const channel = await slack.conversations.create({
-//     name: channelName,
-//     is_private: false,
-//   });
-
-//   // 2. Invite support/admins
-//   if (!channel.channel?.id) {
-//     throw new Error("Failed to create Slack channel – missing channel ID");
-//   }
-
-//   await slack.conversations.invite({
-//     channel: channel.channel.id,
-//     users: process.env.SLACK_SUPPORT_USER_IDS!,
-//   });
-
-
-//   // 3. Post welcome message
-//   const msg = await slack.chat.postMessage({
-//     channel: channel.channel!.id,
-//     text: `New conversation started by *${email}*`,
-//   });
-
-//   return {
-//     channelId: channel.channel!.id,
-//     ts: msg.ts,
-//   };
-// }
+ 
 
 
 
@@ -220,7 +193,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 socket.on("start_conversation", async ({ userId, userEmail }) => {
   try {
     // Check if an active conversation exists for this user
+    console.log("Starting conversation for userId:", userId, "email:", userEmail);
     let conversation = await storage.getActiveConversationByUser(userId);
+      console.log("Active conversation for user:", conversation);
 
     if (!conversation) {
       // Create new conversation if none exists
