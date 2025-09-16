@@ -1,8 +1,8 @@
 import { WebClient } from "@slack/web-api";
-import { storage } from "../storage";
+import { storage } from "../dbQuerys";
 import dotenv from "dotenv";
 dotenv.config();
- const  SLACK_API_TOKEN= process.env.SLACK_API_TOKEN ;
+const SLACK_API_TOKEN = process.env.SLACK_API_TOKEN;
 if (!SLACK_API_TOKEN) {
   throw new Error("SLACK_API_TOKEN environment variable must be set");
 }
@@ -42,14 +42,14 @@ export async function sendMessageToSlack(params: {
 export async function setupSlackEventHandlers(io: any) {
   // In a real implementation, you would set up Slack Events API webhooks
   // For now, we'll simulate receiving messages from Slack
-  
+
   // This would be called by your Slack Events API webhook endpoint
   async function handleSlackMessage(event: any) {
     try {
       if (event.type === 'message' && event.thread_ts && !event.bot_id) {
         // This is a threaded reply from a human agent
         const conversation = await storage.getConversationBySlackThread(event.thread_ts);
-        
+
         if (conversation) {
           // Save the Slack message to our database
           const message = await storage.createMessage({

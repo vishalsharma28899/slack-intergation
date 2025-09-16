@@ -30,7 +30,7 @@ interface UseSocketReturn {
   currentConversation: Conversation | null;
   isTyping: boolean;
   sendMessage: (content: string) => void;
-  startConversation: (userId: string, userEmail: string) => void;
+  startConversation: (userId: string, userEmail: string  ) => void;
   startTyping: () => void;
   stopTyping: () => void;
 }
@@ -126,12 +126,12 @@ export function useSocket(): UseSocketReturn {
   };
 
   // Start a new conversation
-  const startConversation = (userId: string, userEmail: string) => {
+  const startConversation = (userId: string, userEmail: string  ) => {
     if (!socketRef.current) return;
 
     localStorage.setItem("userId", userId);
     localStorage.setItem("userEmail", userEmail);
-
+   
     console.log("🚀 Starting conversation with userId:", userId);
     socketRef.current.emit("join_user", userId);
     socketRef.current.emit("start_conversation", { userId, userEmail });

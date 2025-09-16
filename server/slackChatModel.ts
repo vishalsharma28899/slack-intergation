@@ -1,4 +1,4 @@
- 
+
 
 
 import mongoose from "mongoose";
@@ -38,4 +38,4 @@ const messageSchema = new mongoose.Schema(
 export const User = mongoose.model("User", userSchema);
 export const Conversation = mongoose.model("Conversation", conversationSchema);
 export const Message = mongoose.model("Message", messageSchema);
- export const db = mongoose.connection;
+export const db = mongoose.connection;

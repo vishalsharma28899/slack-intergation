@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
- import { User, Conversation, Message } from "./db.mongo";
+import { User, Conversation, Message } from "./slackChatModel";
 
 export interface IStorage {
   // Users
@@ -69,27 +69,27 @@ export class MongoDBStorage implements IStorage {
     return await Conversation.find({ userId }).sort({ updatedAt: -1 });
   }
 
-async getActiveConversationByUser(userId: string) {
-  console.log("🔎 getActiveConversationByUser called with userId:", userId);
+  async getActiveConversationByUser(userId: string) {
+    console.log("🔎 getActiveConversationByUser called with userId:", userId);
 
-  let query: any = {};
+    let query: any = {};
 
-  try {
-    // Try casting to ObjectId
-    query.userId = new ObjectId(userId);
-  } catch (err) {
-    console.warn("⚠️ Could not cast userId to ObjectId, using raw string:", userId);
-    query.userId = userId;
+    try {
+      // Try casting to ObjectId
+      query.userId = new ObjectId(userId);
+    } catch (err) {
+      console.warn("⚠️ Could not cast userId to ObjectId, using raw string:", userId);
+      query.userId = userId;
+    }
+
+    console.log("📋 Query being used:", query);
+
+    const conversation = await Conversation.findOne(query);
+
+    console.log("🗂 Conversation found:", conversation ? conversation._id.toString() : null);
+
+    return conversation;
   }
-
-  console.log("📋 Query being used:", query);
-
-  const conversation = await Conversation.findOne(query);
-
-  console.log("🗂 Conversation found:", conversation ? conversation._id.toString() : null);
-
-  return conversation;
-}
 
   async createConversation(conversationData: any): Promise<any> {
     if (!conversationData.userId) {

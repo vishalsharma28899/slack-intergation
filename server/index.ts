@@ -1,24 +1,32 @@
 import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./slackChatController";
 import { setupVite, serveStatic, log } from "./vite";
-import { db } from "./db.mongo";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import cors from "cors";
 dotenv.config();
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
- const DATABASE_URL = process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/chatbridge";
- 
- if (!DATABASE_URL) {
-   throw new Error("DATABASE_URL must be set");
- }
- 
- mongoose.connect(DATABASE_URL)
-   .then(() => console.log("✅ MongoDB connected"))
-   .catch((err) => console.error("❌ MongoDB connection error:", err));
- 
+
+
+app.use(cors({
+  origin: "*", // allow all origins, or replace "*" with your frontend URL
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
+
+const DATABASE_URL = process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/chatbridge";
+
+if (!DATABASE_URL) {
+  throw new Error("DATABASE_URL must be set");
+}
+
+mongoose.connect(DATABASE_URL)
+  .then(() => console.log("✅ MongoDB connected"))
+  .catch((err) => console.error("❌ MongoDB connection error:", err));
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -82,3 +90,6 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
   });
 })();
+
+
+ 
